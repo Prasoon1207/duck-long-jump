@@ -1,11 +1,11 @@
 """Gymnasium environment: the duck runs up to the take-off line and jumps into the pit.
 
 Rules (a simplified version of the real event):
-  * The attempt ends the first time a foot touches the ground at or past the line.
-  * The jump distance is measured from the line to the rearmost foot contact at
-    that moment, clamped at 0. Stepping over the line while the other foot is
-    still on the runway therefore scores 0; only a real flight scores.
-  * After landing the duck must stay up for `settle_time` seconds.
+  * The run-up ends the first time the duck touches the ground at or past the line.
+  * It then has `settle_time` seconds to land. The jump is measured from the line
+    to the nearest mark made from touchdown until the end of that window, clamped
+    at 0. A foot still on the runway, or a trailing foot that comes down later,
+    shortens the jump, so only a real two-footed flight scores well.
   * Falling (trunk too low or tilted) ends the episode.
 """
 
@@ -108,7 +108,8 @@ class LongJumpEnv(gym.Env):
         self.steps = 0
         self.steps_since_landing = 0
         self.last_action = np.zeros(self.action_space.shape)
-        self.jump_distance = 0.0
+        self.first_touch_x = np.nan
+        self.nearest_mark_x = np.inf
         self.takeoff_x = np.nan
         self.flight_time = 0.0
         self.episode_terms: dict[str, float] = {}
@@ -118,38 +119,45 @@ class LongJumpEnv(gym.Env):
         action = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
         self.robot.apply_leg_targets(self.data, self.robot.home_leg + self.cfg.action_scale * action)
 
-        just_landed = False
+        phase_at_start = self.phase
         airborne_time = 0.0
         for _ in range(self.n_substeps):
             mujoco.mj_step(self.model, self.data)
-            if self.phase != "runup":
-                continue
             contact_xs = self._ground_contact_xs()
-            if contact_xs.size == 0:
+            if self.phase == "landed":
+                if contact_xs.size:
+                    self.nearest_mark_x = min(self.nearest_mark_x, contact_xs.min())
+            elif contact_xs.size == 0:
                 airborne_time += self.cfg.sim_dt
                 self.flight_time += self.cfg.sim_dt
             elif contact_xs.max() >= self.line_x:
                 self.phase = "landed"
-                just_landed = True
-                self.jump_distance = max(0.0, contact_xs.min() - self.line_x)
+                self.first_touch_x = contact_xs.min()
+                self.nearest_mark_x = contact_xs.min()
             else:
                 self.takeoff_x = contact_xs.max()
                 self.flight_time = 0.0
 
         self.steps += 1
-        if self.phase == "landed" and not just_landed:
+        if phase_at_start == "landed":
             self.steps_since_landing += 1
 
         fell = self._fallen()
+        settled = self.phase == "landed" and self.steps_since_landing >= self.settle_steps
+        terminated = fell or settled
+        truncated = not terminated and self.steps >= self.max_steps
+        attempt_scored = self.phase == "landed" and (terminated or truncated)
+        jump_distance = max(0.0, self.nearest_mark_x - self.line_x) if self.phase == "landed" else 0.0
+
         uprightness = float(np.clip(-self.robot.projected_gravity(self.data)[2], 0.0, 1.0))
         step_info = StepInfo(
-            phase=self.phase if not just_landed else "runup",
+            phase=phase_at_start,
             forward_velocity=float(self.robot.world_linvel(self.data)[0]),
             airborne_time=airborne_time,
             uprightness=uprightness,
             action_delta=action - self.last_action,
-            just_landed=just_landed,
-            jump_distance=self.jump_distance,
+            attempt_scored=attempt_scored,
+            jump_distance=jump_distance,
             fell=fell,
         )
         reward, terms = compute_reward(step_info, self.cfg.reward, self.cfg.control_dt)
@@ -158,20 +166,18 @@ class LongJumpEnv(gym.Env):
 
         self.last_action = action
         obs = self._observe(action, self._foot_contacts())
-        settled = self.phase == "landed" and self.steps_since_landing >= self.settle_steps
-        terminated = fell or settled
-        truncated = not terminated and self.steps >= self.max_steps
 
         info = {}
         if terminated or truncated:
             if self.phase == "landed":
-                outcome = "fell_after_landing" if fell else ("jump" if self.jump_distance > 0 else "stepped_over")
+                outcome = "fell_after_landing" if fell else ("jump" if jump_distance > 0 else "stepped_over")
             else:
                 outcome = "fell" if fell else "timeout"
             info["episode"] = {
                 "outcome": outcome,
-                "jump_distance": self.jump_distance if outcome == "jump" else 0.0,
-                "raw_jump_distance": self.jump_distance,
+                "jump_distance": jump_distance if outcome == "jump" else 0.0,
+                "raw_jump_distance": jump_distance,
+                "first_touch_distance": self.first_touch_x - self.line_x if self.phase == "landed" else 0.0,
                 "flight_time": self.flight_time if self.phase == "landed" else 0.0,
                 "takeoff_gap": self.line_x - self.takeoff_x if not np.isnan(self.takeoff_x) else np.nan,
                 "length": self.steps,

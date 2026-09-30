@@ -2,7 +2,7 @@
 
 Train the [Open Duck Mini v2](https://github.com/apirrone/Open_Duck_Mini) to long jump in MuJoCo with PPO (actor-critic), written from scratch in PyTorch.
 
-The duck starts on a runway, runs up to a take-off line, and jumps into a sand pit. The attempt ends at the first ground contact at or past the line. The score is the distance from the line to the rearmost contact at that moment. If a foot is still on the runway, the score is 0, so stepping over the line doesn't count. After landing, the duck must stay upright for 0.3 s.
+The duck starts on a runway, runs up to a take-off line, and jumps into a sand pit. The run-up ends at the first ground contact at or past the line. The duck then has 0.3 s to land, and the score is the distance from the line to the nearest mark made during that window, the same rule as the real event. A foot still on the runway scores 0, and a trailing foot that comes down behind the leading one shortens the jump. Falling ends the episode.
 
 ## Quick start
 

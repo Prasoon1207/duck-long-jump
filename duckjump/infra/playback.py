@@ -73,6 +73,7 @@ def watch(agent: PPO | None, env_cfg: LongJumpConfig, episodes: int = 5, seed: i
 
 
 def format_result(i: int, r: dict) -> str:
-    return (f"attempt {i + 1}: {r['outcome']:<18} jump {r['raw_jump_distance'] * 100:5.1f} cm | "
+    return (f"attempt {i + 1}: {r['outcome']:<18} jump {r['raw_jump_distance'] * 100:5.1f} cm "
+            f"(first touch {r['first_touch_distance'] * 100:5.1f} cm) | "
             f"flight {r['flight_time'] * 1000:4.0f} ms | take-off gap {r['takeoff_gap'] * 100:5.1f} cm | "
             f"return {r['return']:6.2f}")
