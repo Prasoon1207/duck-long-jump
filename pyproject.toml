@@ -1,0 +1,33 @@
+[project]
+name = "duckjump"
+version = "0.1.0"
+description = "Train the Open Duck Mini v2 to long jump with PPO (actor-critic) in MuJoCo."
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "mujoco>=3.2.0",
+    "gymnasium>=1.0",
+    "numpy",
+    "torch>=2.2",
+    "imageio",
+    "imageio-ffmpeg",
+    "matplotlib",
+]
+
+[tool.uv]
+package = true
+python-preference = "only-managed"
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["duckjump"]
