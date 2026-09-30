@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duck Long Jump Leaderboard</title>
+<style>
+  :root { --fg: #1d2330; --muted: #6b7385; --line: #e3e6ec; --accent: #c8553d; --bg: #fafbfc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); }
+  main { max-width: 900px; margin: 0 auto; padding: 48px 20px; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .sub a, td a { color: var(--accent); text-decoration: none; }
+  .sub a:hover, td a:hover { text-decoration: underline; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: #f3f5f8; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.rank { font-weight: 600; width: 48px; }
+  td.score { font-weight: 600; }
+  .entry { font-weight: 500; }
+  .tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; font-size: 11px; background: #eef1f5; color: var(--muted); }
+  .rules { margin-top: 28px; color: var(--muted); font-size: 14px; }
+  .rejected { margin-top: 20px; font-size: 14px; color: var(--muted); }
+  footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Duck Long Jump</h1>
+  <p class="sub">Teach the Open Duck Mini v2 to long jump in MuJoCo.
+    <a id="repo" href="https://github.com/Prasoon1207/duck-long-jump">Repository</a> &middot;
+    <a id="howto" href="https://github.com/Prasoon1207/duck-long-jump/blob/main/submissions/README.md">How to submit</a></p>
+
+  <table>
+    <thead>
+      <tr><th>#</th><th>Entry</th><th>Author</th><th class="num">Score (cm)</th><th class="num">Success</th><th class="num">Best (cm)</th><th class="num">Training steps</th><th>Recipe</th></tr>
+    </thead>
+    <tbody id="rows"><tr><td colspan="8">Loading&hellip;</td></tr></tbody>
+  </table>
+  <div class="rejected" id="rejected"></div>
+
+  <p class="rules" id="rules"></p>
+  <footer id="footer"></footer>
+</main>
+<script>
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const cm = m => (m * 100).toFixed(1);
+
+  fetch("leaderboard.json", {cache: "no-store"})
+    .then(r => r.json())
+    .then(board => {
+      const rows = board.entries.map(e => `
+        <tr>
+          <td class="rank">${e.rank}</td>
+          <td><span class="entry">${esc(e.title)}</span>${e.code_changes ? '<span class="tag">code changes</span>' : ""}</td>
+          <td>${esc(e.author)}</td>
+          <td class="num score">${cm(e.score)}</td>
+          <td class="num">${Math.round(e.success_rate * 100)}%</td>
+          <td class="num">${cm(e.best)}</td>
+          <td class="num">${e.steps.toLocaleString("en-US")}</td>
+          <td><a href="${esc(e.recipe_url)}">${esc(e.entry)}</a></td>
+        </tr>`);
+      document.getElementById("rows").innerHTML = rows.join("") || '<tr><td colspan="8">No entries yet.</td></tr>';
+      if (board.rejected.length) {
+        document.getElementById("rejected").innerHTML = "Not ranked: " +
+          board.rejected.map(r => `<code>${esc(r.entry)}</code> (${esc(r.reason)})`).join(", ");
+      }
+      document.getElementById("rules").textContent =
+        `Score: mean jump distance over ${board.rules.eval_seeds} fixed seeds from the full run-up, deterministic policy; ` +
+        `falls, step-overs and timeouts count as 0. Training budget: ${board.rules.step_budget.toLocaleString("en-US")} environment steps. ` +
+        `Robot, motors, arena and rules are frozen; algorithm, reward, observations and hyperparameters are free.`;
+      const commit = board.commit ? ` from ${board.commit.slice(0, 7)}` : "";
+      document.getElementById("footer").textContent = `Evaluated ${board.generated_at}${commit}.`;
+    })
+    .catch(() => { document.getElementById("rows").innerHTML = '<tr><td colspan="8">Could not load leaderboard.json.</td></tr>'; });
+</script>
+</body>
+</html>
