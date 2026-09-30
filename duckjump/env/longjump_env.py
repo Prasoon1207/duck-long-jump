@@ -158,6 +158,7 @@ class LongJumpEnv(gym.Env):
             action_delta=action - self.last_action,
             attempt_scored=attempt_scored,
             jump_distance=jump_distance,
+            takeoff_gap=self.line_x - self.takeoff_x if not np.isnan(self.takeoff_x) else np.inf,
             fell=fell,
         )
         reward, terms = compute_reward(step_info, self.cfg.reward, self.cfg.control_dt)

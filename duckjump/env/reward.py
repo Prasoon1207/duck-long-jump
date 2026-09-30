@@ -2,6 +2,10 @@
 
 The environment calls `compute_reward(step, weights, dt)` once per control step
 with a `StepInfo` describing what just happened.
+
+Nothing here shapes how the duck moves while airborne: the posture and smoothness
+terms only apply to the part of a step spent touching the ground, so the flight
+itself is judged purely by where the duck lands.
 """
 
 from dataclasses import dataclass
@@ -15,41 +19,50 @@ class RewardWeights:
     max_runup_velocity: float = 1.0  # forward speed above this earns nothing extra
     airtime: float = 2.0             # per second with both feet off the ground, before landing
     jump_distance: float = 100.0     # per metre jumped, paid once the landing window ends
+    takeoff_accuracy: float = 5.0    # bonus for taking off right at the line (a jump of 5 cm is worth the same)
+    takeoff_accuracy_scale: float = 0.10  # m; the bonus falls off as exp(-gap / scale)
     fall: float = -2.0               # falling before landing
-    fall_after_landing: float = 0.5  # fraction of the jump reward taken back if it falls while landing
-    upright: float = 0.1             # per second, scaled by how upright the trunk is
-    action_rate: float = -0.02       # per second, times squared change in action
+    fall_after_landing: float = 1.0  # fraction of the jump reward taken back if it falls while landing
+    fall_after_landing_extra: float = -2.0  # plus this fixed penalty
+    upright: float = 0.1             # per second on the ground, scaled by how upright the trunk is
+    action_rate: float = -0.02       # per second on the ground, times squared change in action
 
 
 @dataclass
 class StepInfo:
     phase: str               # phase at the start of the step: "runup" (includes the flight) or "landed"
     forward_velocity: float  # world-frame x velocity of the base (m/s)
-    airborne_time: float     # seconds of this step with nothing touching the ground
+    airborne_time: float     # seconds of this step with nothing touching the ground, before landing
     uprightness: float       # 1 upright, 0 lying flat
     action_delta: np.ndarray
     attempt_scored: bool     # the landing window just ended; jump_distance is final
     jump_distance: float     # line to nearest mark (m), clamped at 0
+    takeoff_gap: float       # line to the last runway contact before the flight (m)
     fell: bool
 
 
 def compute_reward(s: StepInfo, w: RewardWeights, dt: float) -> tuple[float, dict]:
+    ground_time = dt - s.airborne_time
     terms = {
         "runup_velocity": 0.0,
         "airtime": 0.0,
         "jump_distance": 0.0,
+        "takeoff_accuracy": 0.0,
         "fall": 0.0,
-        "upright": w.upright * s.uprightness * dt,
-        "action_rate": w.action_rate * float(np.sum(s.action_delta**2)) * dt,
+        "upright": w.upright * s.uprightness * ground_time,
+        "action_rate": w.action_rate * float(np.sum(s.action_delta**2)) * ground_time,
     }
     if s.phase == "runup":
         terms["runup_velocity"] = w.runup_velocity * np.clip(s.forward_velocity, -w.max_runup_velocity, w.max_runup_velocity) * dt
         terms["airtime"] = w.airtime * s.airborne_time
     if s.attempt_scored:
         terms["jump_distance"] = w.jump_distance * s.jump_distance
+        if s.jump_distance > 0:
+            terms["takeoff_accuracy"] = w.takeoff_accuracy * np.exp(-s.takeoff_gap / w.takeoff_accuracy_scale)
     if s.fell:
         if s.attempt_scored:
-            terms["fall"] = -w.fall_after_landing * terms["jump_distance"]
+            terms["fall"] = (-w.fall_after_landing * (terms["jump_distance"] + terms["takeoff_accuracy"])
+                             + w.fall_after_landing_extra)
         else:
             terms["fall"] = w.fall
     return float(sum(terms.values())), terms
