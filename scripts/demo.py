@@ -1,7 +1,7 @@
 """Show a trained jumper.
 
     uv run scripts/demo.py runs/demo              # live MuJoCo viewer
-    uv run scripts/demo.py runs/demo --video      # write runs/demo/jump.mp4 instead
+    uv run scripts/demo.py runs/demo --video      # write runs/demo/jump_iso.mp4 instead
 """
 
 import argparse
@@ -15,7 +15,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("run", help="run directory or .pt checkpoint")
     p.add_argument("--video", action="store_true", help="record an MP4 instead of opening the viewer")
-    p.add_argument("--camera", default="follow", choices=["follow", "side"])
+    p.add_argument("--camera", default="iso", choices=["iso", "follow", "side"])
     p.add_argument("--episodes", type=int, default=5)
     p.add_argument("--slowdown", type=float, default=1.0, help="2.0 = half speed in the viewer")
     args = p.parse_args()
@@ -31,7 +31,7 @@ def main():
             print(format_result(i, r))
         print(f"video: {out}")
     else:
-        watch(agent, env_cfg, episodes=args.episodes, slowdown=args.slowdown)
+        watch(agent, env_cfg, episodes=args.episodes, slowdown=args.slowdown, camera=args.camera)
 
 
 if __name__ == "__main__":
