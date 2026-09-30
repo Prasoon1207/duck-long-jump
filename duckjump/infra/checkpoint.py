@@ -42,11 +42,18 @@ def save_checkpoint(path: Path, agent: PPO, env_cfg: LongJumpConfig, obs_dim: in
     }, path)
 
 
-def load_checkpoint(path: str | Path) -> tuple[PPO, LongJumpConfig, dict]:
+def load_policy(path: str | Path) -> tuple[PPO, dict]:
+    """The agent alone, without rebuilding its env config. The official evaluator uses this:
+    it only needs `agent.act(obs_batch, deterministic=True)[0]` and `ckpt["steps"]`."""
     path = Path(path)
     if path.is_dir():
         path = path / "best.pt" if (path / "best.pt").exists() else path / "latest.pt"
     ckpt = torch.load(path, weights_only=False)
     agent = PPO(ckpt["obs_dim"], ckpt["act_dim"], ppo_config_from_dict(ckpt["ppo_cfg"]))
     agent.load_state_dict(ckpt["agent"])
+    return agent, ckpt
+
+
+def load_checkpoint(path: str | Path) -> tuple[PPO, LongJumpConfig, dict]:
+    agent, ckpt = load_policy(path)
     return agent, env_config_from_dict(ckpt["env_cfg"]), ckpt
